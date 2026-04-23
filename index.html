@@ -79,6 +79,7 @@
             font-size: 1.8rem;
             font-weight: 600;
             background: linear-gradient(135deg, #fff 0%, #a0a0b0 100%);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 0.3rem;
@@ -672,6 +673,29 @@
             color: #000;
         }
 
+        .task-item .task-severity.no-due {
+            background: var(--accent-purple);
+            color: #fff;
+        }
+
+        .task-item .task-severity.overdue {
+            background: var(--accent-orange);
+            color: #000;
+        }
+
+        .task-item .task-severity.pending {
+            background: rgba(255, 193, 7, 0.2);
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
+        }
+
+        .task-item .task-severity.done,
+        .task-item .task-severity.completed {
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+        }
+
         /* Footer */
         .footer {
             text-align: center;
@@ -1155,109 +1179,738 @@
         Chart.defaults.color = '#a0a0b0';
         Chart.defaults.borderColor = '#2a2a3a';
 
-        // Completion Rate Chart
-        const completionCtx = document.getElementById('completionChart').getContext('2d');
-        new Chart(completionCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Jai', 'Rahul', 'Kamal', 'Dev', 'Lakshya'],
-                datasets: [{
-                    label: 'Completion Rate %',
-                    data: [100, 87, 85, 77, 31],
-                    backgroundColor: ['#00ff88', '#ffc107', '#00ff88', '#ffc107', '#ff4757'],
-                    borderRadius: 8,
-                    borderSkipped: false,
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { beginAtZero: true, max: 100, grid: { color: '#2a2a3a' } },
-                    x: { grid: { display: false } }
+        const API_ENDPOINT = '/api/sheet-data';
+        const AUTO_REFRESH_MS = 5 * 60 * 1000;
+        const SHEET_ID = '1UCjOC7ChKyaWHIbp1XA_7IjeAO1cLtuUCXlVFDw0dtg';
+        const SHEET_GID = '0';
+
+        const TEAM_MAP = {
+            'jai angurala': 'product',
+            'kamal singh': 'operations',
+            'rahul jha': 'operations',
+            'dev maheswari': 'operations',
+            'lakshya jaiswal': 'operations'
+        };
+
+        const chartInstances = {
+            completion: null,
+            distribution: null,
+            urgency: null,
+            noDue: null
+        };
+
+        function escapeHtml(value) {
+            const str = String(value ?? '');
+            return str
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function formatDisplayDate(date) {
+            if (!date) {
+                return '--';
+            }
+
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+
+        function parseDueDate(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return null;
+            }
+
+            const value = String(rawValue).trim();
+            if (!value) {
+                return null;
+            }
+
+            const ddmmyyyy = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+            if (ddmmyyyy) {
+                const day = Number(ddmmyyyy[1]);
+                const month = Number(ddmmyyyy[2]);
+                const year = Number(ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3]);
+                const parsed = new Date(year, month - 1, day);
+                if (!Number.isNaN(parsed.getTime())) {
+                    return parsed;
                 }
             }
-        });
 
-        // Distribution Chart
-        const distCtx = document.getElementById('distributionChart').getContext('2d');
-        new Chart(distCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Completed', 'Pending', 'Overdue', 'No Due Date'],
-                datasets: [{
-                    data: [64, 4, 26, 19],
-                    backgroundColor: ['#00ff88', '#ffc107', '#ff4757', '#9775fa'],
-                    borderWidth: 0,
-                    spacing: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { position: 'bottom', labels: { padding: 15 } } },
-                cutout: '65%'
+            const date = new Date(value);
+            if (!Number.isNaN(date.getTime())) {
+                return date;
             }
-        });
 
-        // NEW: Urgency Breakdown Chart
-        const urgencyCtx = document.getElementById('urgencyChart').getContext('2d');
-        new Chart(urgencyCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Lakshya', 'Rahul', 'Kamal', 'Dev', 'Jai'],
-                datasets: [
-                    {
-                        label: '🔥 Urgent (>48hrs)',
-                        data: [5, 4, 1, 0, 0],
-                        backgroundColor: '#ff4757',
-                        borderRadius: 4,
-                    },
-                    {
-                        label: '⚠️ Reminder (24-48hrs)',
-                        data: [4, 3, 4, 3, 2],
-                        backgroundColor: '#ffc107',
-                        borderRadius: 4,
+            return null;
+        }
+
+        function normalizeStatus(status) {
+            return String(status ?? '').trim().toLowerCase();
+        }
+
+        function mapGvizRowToExpectedShape(row) {
+            const cells = (row && Array.isArray(row.c)) ? row.c : [];
+            const getValue = index => {
+                const cell = cells[index];
+                if (!cell || cell.v === null || cell.v === undefined) {
+                    return '';
+                }
+                return String(cell.v);
+            };
+
+            return {
+                timestamp: getValue(0),
+                user: getValue(1),
+                task_id: getValue(2),
+                task: getValue(3),
+                due: getValue(4),
+                category: getValue(5),
+                follow_up: getValue(6),
+                status: getValue(7)
+            };
+        }
+
+        function fetchSheetRowsViaJsonp() {
+            return new Promise((resolve, reject) => {
+                const callbackName = `sheetJsonpCallback_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+                const script = document.createElement('script');
+
+                const cleanup = () => {
+                    if (script.parentNode) {
+                        script.parentNode.removeChild(script);
                     }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { position: 'bottom' } },
-                scales: {
-                    x: { stacked: true, grid: { display: false } },
-                    y: { stacked: true, grid: { color: '#2a2a3a' } }
-                }
-            }
-        });
+                    delete window[callbackName];
+                };
 
-        // NEW: No Due Date Chart
-        const noDueCtx = document.getElementById('noDueChart').getContext('2d');
-        new Chart(noDueCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Dev', 'Lakshya', 'Kamal', 'Jai', 'Rahul'],
-                datasets: [{
-                    label: 'Tasks Without Due Date',
-                    data: [8, 5, 3, 3, 2],
-                    backgroundColor: '#9775fa',
-                    borderRadius: 8,
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { beginAtZero: true, grid: { color: '#2a2a3a' } },
-                    y: { grid: { display: false } }
+                window[callbackName] = payload => {
+                    try {
+                        const rows = (payload && payload.table && Array.isArray(payload.table.rows))
+                            ? payload.table.rows.map(mapGvizRowToExpectedShape)
+                            : [];
+                        cleanup();
+                        resolve(rows);
+                    } catch (error) {
+                        cleanup();
+                        reject(error);
+                    }
+                };
+
+                script.onerror = () => {
+                    cleanup();
+                    reject(new Error('JSONP script load failed for public Google Sheet endpoint.'));
+                };
+
+                script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(SHEET_ID)}/gviz/tq?gid=${encodeURIComponent(SHEET_GID)}&tqx=out:json;responseHandler:${callbackName}`;
+                document.head.appendChild(script);
+            });
+        }
+
+        function isCompleted(status) {
+            const normalized = normalizeStatus(status);
+            return normalized === 'done' || normalized === 'completed';
+        }
+
+        function computeTaskMeta(task, now) {
+            const dueDate = parseDueDate(task.due);
+            const completed = isCompleted(task.status);
+
+            if (!dueDate) {
+                return {
+                    ...task,
+                    dueDate: null,
+                    completed,
+                    overdue: false,
+                    dueToday: false,
+                    urgent: false,
+                    reminder: false,
+                    noDue: true,
+                    hoursOverdue: 0
+                };
+            }
+
+            const dueMidnight = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+            const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const overdue = !completed && dueMidnight < todayMidnight;
+            const dueToday = !completed && dueMidnight.getTime() === todayMidnight.getTime();
+            const hoursOverdue = overdue ? (now.getTime() - dueMidnight.getTime()) / (1000 * 60 * 60) : 0;
+
+            return {
+                ...task,
+                dueDate,
+                completed,
+                overdue,
+                dueToday,
+                urgent: overdue && hoursOverdue > 48,
+                reminder: overdue && hoursOverdue > 0 && hoursOverdue <= 48,
+                noDue: false,
+                hoursOverdue
+            };
+        }
+
+        function teamForUser(userName) {
+            const key = String(userName || '').trim().toLowerCase();
+            return TEAM_MAP[key] || 'operations';
+        }
+
+        function getTaskLink(task) {
+            const taskId = String(task.task_id || '').trim();
+            if (/^https?:\/\//i.test(taskId)) {
+                return taskId;
+            }
+
+            const taskText = String(task.task || '').trim();
+            const urlInTask = taskText.match(/https?:\/\/[^\s]+/i);
+            if (urlInTask) {
+                return urlInTask[0];
+            }
+
+            return 'https://tasks.google.com/';
+        }
+
+        function setLoadingState(isLoading) {
+            const existing = document.getElementById('loadingStateBanner');
+            if (isLoading && !existing) {
+                const banner = document.createElement('div');
+                banner.id = 'loadingStateBanner';
+                banner.style.position = 'sticky';
+                banner.style.top = '0';
+                banner.style.zIndex = '2001';
+                banner.style.padding = '0.5rem 1rem';
+                banner.style.background = 'rgba(77, 171, 247, 0.12)';
+                banner.style.borderBottom = '1px solid #4dabf7';
+                banner.style.fontFamily = "'JetBrains Mono', monospace";
+                banner.style.fontSize = '0.75rem';
+                banner.style.color = '#a0a0b0';
+                banner.textContent = 'Syncing dashboard data from Google Sheets...';
+                document.body.prepend(banner);
+            }
+
+            if (!isLoading && existing) {
+                existing.remove();
+            }
+        }
+
+        function renderKpis(metrics, userCount) {
+            const kpiGrid = document.querySelector('.kpi-grid');
+            if (!kpiGrid) {
+                return;
+            }
+
+            const completionRate = metrics.totalTasks ? ((metrics.completed / metrics.totalTasks) * 100).toFixed(1) : '0.0';
+            const pendingRate = metrics.totalTasks ? ((metrics.pending / metrics.totalTasks) * 100).toFixed(1) : '0.0';
+
+            kpiGrid.innerHTML = `
+                <div class="kpi-card blue">
+                    <div class="kpi-icon">📊</div>
+                    <div class="kpi-label">Total Tasks</div>
+                    <div class="kpi-value">${metrics.totalTasks}</div>
+                    <div class="kpi-change">Across ${userCount} team members</div>
+                </div>
+                <div class="kpi-card green">
+                    <div class="kpi-icon">✅</div>
+                    <div class="kpi-label">Completed</div>
+                    <div class="kpi-value">${metrics.completed}</div>
+                    <div class="kpi-change">${completionRate}% completion rate</div>
+                </div>
+                <div class="kpi-card yellow">
+                    <div class="kpi-icon">⏳</div>
+                    <div class="kpi-label">Pending</div>
+                    <div class="kpi-value">${metrics.pending}</div>
+                    <div class="kpi-change">${pendingRate}% of total</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-icon">🔥</div>
+                    <div class="kpi-label">Urgent (&gt;48hrs)</div>
+                    <div class="kpi-value">${metrics.urgent}</div>
+                    <div class="kpi-change">Critical escalation needed</div>
+                </div>
+                <div class="kpi-card orange">
+                    <div class="kpi-icon">📅</div>
+                    <div class="kpi-label">Due Today</div>
+                    <div class="kpi-value">${metrics.dueToday}</div>
+                    <div class="kpi-change">Action needed now</div>
+                </div>
+                <div class="kpi-card purple">
+                    <div class="kpi-icon">❓</div>
+                    <div class="kpi-label">No Due Date</div>
+                    <div class="kpi-value">${metrics.noDueDate}</div>
+                    <div class="kpi-change">Needs deadline assignment</div>
+                </div>
+                <div class="kpi-card yellow">
+                    <div class="kpi-icon">⚠️</div>
+                    <div class="kpi-label">Overdue Total</div>
+                    <div class="kpi-value">${metrics.overdue}</div>
+                    <div class="kpi-change">${metrics.urgent} urgent + ${metrics.reminder} reminder</div>
+                </div>
+            `;
+        }
+
+        function renderAlerts(metrics, perUserStats) {
+            const alertsGrid = document.querySelector('.alerts-grid');
+            if (!alertsGrid) {
+                return;
+            }
+
+            const sortedByUrgent = [...perUserStats].sort((a, b) => b.urgent - a.urgent);
+            const topUrgent = sortedByUrgent[0];
+            const secondUrgent = sortedByUrgent[1];
+            const topPerformer = [...perUserStats].sort((a, b) => b.completionRate - a.completionRate)[0];
+
+            const urgentCard = topUrgent && topUrgent.urgent > 0
+                ? `<div class="alert-card urgent">
+                        <span class="alert-icon">🔥</span>
+                        <div class="alert-content">
+                            <h4>${escapeHtml(topUrgent.user)} has ${topUrgent.urgent} URGENT tasks (&gt;48hrs overdue)</h4>
+                            <p>${topUrgent.completionRate.toFixed(0)}% completion • Critical intervention needed</p>
+                        </div>
+                   </div>`
+                : '';
+
+            const secondUrgentCard = secondUrgent && secondUrgent.urgent > 0
+                ? `<div class="alert-card urgent">
+                        <span class="alert-icon">🚨</span>
+                        <div class="alert-content">
+                            <h4>${escapeHtml(secondUrgent.user)} has ${secondUrgent.urgent} URGENT tasks (&gt;48hrs overdue)</h4>
+                            <p>${secondUrgent.completionRate.toFixed(0)}% completion • Critical delays detected</p>
+                        </div>
+                   </div>`
+                : '';
+
+            alertsGrid.innerHTML = `
+                ${urgentCard}
+                ${secondUrgentCard}
+                <div class="alert-card info">
+                    <span class="alert-icon">❓</span>
+                    <div class="alert-content">
+                        <h4>${metrics.noDueDate} tasks have NO DUE DATE</h4>
+                        <p>Needs backlog hygiene and due date assignment</p>
+                    </div>
+                </div>
+                <div class="alert-card warning">
+                    <span class="alert-icon">📅</span>
+                    <div class="alert-content">
+                        <h4>${metrics.dueToday} tasks due TODAY</h4>
+                        <p>Check standup priorities and owners</p>
+                    </div>
+                </div>
+                <div class="alert-card success">
+                    <span class="alert-icon">🏆</span>
+                    <div class="alert-content">
+                        <h4>${escapeHtml(topPerformer?.user || 'No user data')} is current TOP PERFORMER</h4>
+                        <p>${(topPerformer?.completionRate || 0).toFixed(0)}% completion • Keep momentum</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function buildPersonCard(stat, flags) {
+            const cardClasses = ['person-card'];
+            if (flags.topPerformerUser === stat.user) {
+                cardClasses.push('top-performer');
+            }
+            if (flags.needsAttentionUser === stat.user) {
+                cardClasses.push('needs-attention');
+            }
+
+            const initials = stat.user
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(part => part[0].toUpperCase())
+                .join('') || 'NA';
+
+            const barColor = stat.completionRate >= 90
+                ? 'var(--gradient-green)'
+                : stat.completionRate >= 70
+                    ? 'var(--gradient-yellow)'
+                    : 'var(--gradient-red)';
+
+            return `
+                <div class="${cardClasses.join(' ')}" data-team="${teamForUser(stat.user)}">
+                    <div class="person-avatar" style="background: var(--gradient-blue);">${escapeHtml(initials)}</div>
+                    <div class="person-info">
+                        <h4>${escapeHtml(stat.user)}</h4>
+                        <span class="team-badge">${escapeHtml(teamForUser(stat.user))}</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 ${stat.urgent} Urgent</span>
+                            <span class="followup-badge reminder">⚠️ ${stat.reminder} Reminder</span>
+                            <span class="followup-badge no-due">❓ ${stat.noDueDate} No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">${stat.total}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">${stat.completed}</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">${stat.pending}</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">${stat.overdue}</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: ${stat.completionRate.toFixed(0)}%; background: ${barColor};"></div>
+                            </div>
+                            <div class="bar-label">${stat.completionRate.toFixed(0)}% Complete</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPerformanceCards(perUserStats) {
+            const grid = document.querySelector('.performance-grid');
+            if (!grid) {
+                return;
+            }
+
+            const topPerformer = [...perUserStats].sort((a, b) => b.completionRate - a.completionRate)[0];
+            const needsAttention = [...perUserStats]
+                .filter(stat => stat.total > 0)
+                .sort((a, b) => a.completionRate - b.completionRate)[0];
+
+            const flags = {
+                topPerformerUser: topPerformer ? topPerformer.user : '',
+                needsAttentionUser: needsAttention ? needsAttention.user : ''
+            };
+
+            grid.innerHTML = perUserStats
+                .sort((a, b) => b.total - a.total)
+                .map(stat => buildPersonCard(stat, flags))
+                .join('');
+        }
+
+        function taskSeverity(task) {
+            if (task.urgent) {
+                return { key: 'urgent', label: 'URGENT' };
+            }
+            if (task.reminder) {
+                return { key: 'reminder', label: '24-48H' };
+            }
+            if (task.noDue) {
+                return { key: 'no-due', label: 'NO DUE' };
+            }
+            if (task.overdue) {
+                return { key: 'overdue', label: 'OVERDUE' };
+            }
+            return { key: 'pending', label: normalizeStatus(task.status) || 'PENDING' };
+        }
+
+        function renderTaskList(tasks) {
+            const taskList = document.querySelector('.task-list');
+            if (!taskList) {
+                return;
+            }
+
+            const ordered = [...tasks].sort((a, b) => {
+                const rankA = a.urgent ? 0 : a.reminder ? 1 : a.overdue ? 2 : a.noDue ? 4 : 3;
+                const rankB = b.urgent ? 0 : b.reminder ? 1 : b.overdue ? 2 : b.noDue ? 4 : 3;
+                if (rankA !== rankB) {
+                    return rankA - rankB;
+                }
+
+                const timeA = a.dueDate ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+                const timeB = b.dueDate ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+                return timeA - timeB;
+            }).slice(0, 30);
+
+            taskList.innerHTML = ordered.map(task => {
+                const severity = taskSeverity(task);
+                const safeTask = escapeHtml(task.task || '(untitled task)');
+                const safeUser = escapeHtml(task.user || 'Unassigned');
+                const dueLabel = task.noDue ? '--' : formatDisplayDate(task.dueDate);
+                const link = getTaskLink(task);
+
+                return `
+                    <div class="task-item">
+                        <div class="task-status ${severity.key}"></div>
+                        <span class="task-severity ${severity.key}">${escapeHtml(severity.label.toUpperCase())}</span>
+                        <span class="task-name">${safeTask}</span>
+                        <span class="task-assignee">${safeUser}</span>
+                        <span class="task-due">${escapeHtml(dueLabel)}</span>
+                        <a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" class="task-link">Open Task →</a>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function destroyChart(chart) {
+            if (chart) {
+                chart.destroy();
+            }
+        }
+
+        function renderCharts(metrics, perUserStats) {
+            const completionLabels = perUserStats.map(item => item.user);
+            const completionData = perUserStats.map(item => Number(item.completionRate.toFixed(1)));
+            const completionColors = perUserStats.map(item => item.completionRate >= 90 ? '#00ff88' : item.completionRate >= 70 ? '#ffc107' : '#ff4757');
+
+            destroyChart(chartInstances.completion);
+            chartInstances.completion = new Chart(document.getElementById('completionChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: completionLabels,
+                    datasets: [{
+                        label: 'Completion Rate %',
+                        data: completionData,
+                        backgroundColor: completionColors,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, grid: { color: '#2a2a3a' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            destroyChart(chartInstances.distribution);
+            chartInstances.distribution = new Chart(document.getElementById('distributionChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed', 'Pending', 'Overdue', 'No Due Date'],
+                    datasets: [{
+                        data: [metrics.completed, metrics.pending, metrics.overdue, metrics.noDueDate],
+                        backgroundColor: ['#00ff88', '#ffc107', '#ff4757', '#9775fa'],
+                        borderWidth: 0,
+                        spacing: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom', labels: { padding: 15 } } },
+                    cutout: '65%'
+                }
+            });
+
+            destroyChart(chartInstances.urgency);
+            chartInstances.urgency = new Chart(document.getElementById('urgencyChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: perUserStats.map(item => item.user),
+                    datasets: [
+                        {
+                            label: '🔥 Urgent (>48hrs)',
+                            data: perUserStats.map(item => item.urgent),
+                            backgroundColor: '#ff4757',
+                            borderRadius: 4
+                        },
+                        {
+                            label: '⚠️ Reminder (24-48hrs)',
+                            data: perUserStats.map(item => item.reminder),
+                            backgroundColor: '#ffc107',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, grid: { color: '#2a2a3a' }, beginAtZero: true }
+                    }
+                }
+            });
+
+            destroyChart(chartInstances.noDue);
+            chartInstances.noDue = new Chart(document.getElementById('noDueChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: perUserStats.map(item => item.user),
+                    datasets: [{
+                        label: 'Tasks Without Due Date',
+                        data: perUserStats.map(item => item.noDueDate),
+                        backgroundColor: '#9775fa',
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: '#2a2a3a' } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function computeDashboardData(rawRows) {
+            const now = new Date();
+            const enrichedTasks = rawRows.map(row => computeTaskMeta(row, now));
+
+            const metrics = {
+                totalTasks: enrichedTasks.length,
+                completed: 0,
+                pending: 0,
+                overdue: 0,
+                noDueDate: 0,
+                urgent: 0,
+                dueToday: 0,
+                reminder: 0
+            };
+
+            const byUser = new Map();
+
+            for (const task of enrichedTasks) {
+                if (!byUser.has(task.user)) {
+                    byUser.set(task.user, {
+                        user: task.user || 'Unassigned',
+                        total: 0,
+                        completed: 0,
+                        pending: 0,
+                        overdue: 0,
+                        noDueDate: 0,
+                        urgent: 0,
+                        reminder: 0,
+                        dueToday: 0,
+                        completionRate: 0
+                    });
+                }
+
+                const userAgg = byUser.get(task.user);
+                userAgg.total += 1;
+
+                if (task.completed) {
+                    metrics.completed += 1;
+                    userAgg.completed += 1;
+                } else {
+                    metrics.pending += 1;
+                    userAgg.pending += 1;
+                }
+
+                if (task.overdue) {
+                    metrics.overdue += 1;
+                    userAgg.overdue += 1;
+                }
+                if (task.noDue) {
+                    metrics.noDueDate += 1;
+                    userAgg.noDueDate += 1;
+                }
+                if (task.urgent) {
+                    metrics.urgent += 1;
+                    userAgg.urgent += 1;
+                }
+                if (task.reminder) {
+                    metrics.reminder += 1;
+                    userAgg.reminder += 1;
+                }
+                if (task.dueToday) {
+                    metrics.dueToday += 1;
+                    userAgg.dueToday += 1;
                 }
             }
-        });
+
+            const perUserStats = Array.from(byUser.values()).map(item => ({
+                ...item,
+                completionRate: item.total ? (item.completed / item.total) * 100 : 0
+            }));
+
+            return { metrics, perUserStats, enrichedTasks };
+        }
+
+        function setLastSyncTime(date = new Date()) {
+            const syncElement = document.querySelector('.last-sync');
+            if (!syncElement) {
+                return;
+            }
+
+            const formatted = date.toLocaleString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            syncElement.textContent = `Last sync: ${formatted}`;
+        }
+
+        async function fetchSheetRows() {
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store'
+                });
+
+                if (!response.ok) {
+                    const body = await response.text();
+                    throw new Error(`API error (${response.status}): ${body}`);
+                }
+
+                const payload = await response.json();
+                if (!payload || !Array.isArray(payload.rows)) {
+                    throw new Error('Invalid API payload. Expected { rows: [] }.');
+                }
+
+                return payload.rows;
+            } catch (apiError) {
+                console.warn('Primary API fetch failed, switching to public-sheet JSONP fallback:', apiError);
+                const fallbackRows = await fetchSheetRowsViaJsonp();
+                if (!Array.isArray(fallbackRows)) {
+                    throw new Error('Fallback returned invalid data format.');
+                }
+                return fallbackRows;
+            }
+        }
+
+        async function loadAndRenderDashboard() {
+            setLoadingState(true);
+            try {
+                const rows = await fetchSheetRows();
+                const data = computeDashboardData(rows);
+
+                renderKpis(data.metrics, data.perUserStats.length);
+                renderAlerts(data.metrics, data.perUserStats);
+                renderPerformanceCards(data.perUserStats);
+                renderTaskList(data.enrichedTasks);
+                renderCharts(data.metrics, data.perUserStats);
+                setLastSyncTime(new Date());
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+                const taskList = document.querySelector('.task-list');
+                if (taskList) {
+                    taskList.innerHTML = `
+                        <div class="task-item" style="border: 1px solid var(--accent-red);">
+                            <span class="task-name">Failed to load data. ${escapeHtml(error.message)}. If running static HTML locally, deploy with Vercel API or keep sheet public for JSONP fallback.</span>
+                        </div>
+                    `;
+                }
+            } finally {
+                setLoadingState(false);
+            }
+        }
 
         // Filter Function
         function filterTeam(team) {
             document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            const target = window.event && window.event.target ? window.event.target : null;
+            if (target) {
+                target.classList.add('active');
+            }
 
             document.querySelectorAll('.person-card').forEach(card => {
                 if (team === 'all' || card.dataset.team === team) {
@@ -1267,6 +1920,9 @@
                 }
             });
         }
+
+        loadAndRenderDashboard();
+        setInterval(loadAndRenderDashboard, AUTO_REFRESH_MS);
     </script>
 </body>
 
