@@ -14,6 +14,15 @@ const EXPECTED_HEADERS = [
     'status'
 ];
 
+function normalizeRowByIndex(sourceRow) {
+    const normalized = {};
+    for (let i = 0; i < EXPECTED_HEADERS.length; i += 1) {
+        const key = EXPECTED_HEADERS[i];
+        normalized[key] = sourceRow[i] ?? '';
+    }
+    return normalized;
+}
+
 function normalizeHeader(value) {
     return String(value || '')
         .trim()
@@ -55,29 +64,16 @@ function parseGvizJson(rawText) {
 
 function rowsFromGviz(gvizPayload) {
     const table = gvizPayload?.table;
-    const cols = table?.cols || [];
     const rows = table?.rows || [];
-
-    const headers = cols.map(col => normalizeHeader(col?.label || col?.id || ''));
 
     return rows.map(row => {
         const values = row?.c || [];
-        const item = {};
-
-        for (let i = 0; i < headers.length; i += 1) {
-            const key = headers[i] || EXPECTED_HEADERS[i] || `col_${i}`;
-            const cellValue = values[i] ? values[i].v : '';
-            item[key] = decodeGoogleDateValue(cellValue);
-        }
-
+        const rowByIndex = [];
         for (let i = 0; i < EXPECTED_HEADERS.length; i += 1) {
-            const header = EXPECTED_HEADERS[i];
-            if (!(header in item)) {
-                item[header] = '';
-            }
+            const cellValue = values[i] ? values[i].v : '';
+            rowByIndex.push(decodeGoogleDateValue(cellValue));
         }
-
-        return item;
+        return normalizeRowByIndex(rowByIndex);
     });
 }
 
@@ -86,25 +82,12 @@ function rowsFromSheetsApi(values) {
         return [];
     }
 
-    const [headerRow, ...dataRows] = values;
-    const headers = (headerRow || []).map(normalizeHeader);
+    const firstRow = values[0] || [];
+    const normalizedFirstRow = firstRow.map(normalizeHeader);
+    const hasExpectedHeaderRow = EXPECTED_HEADERS.every((header, index) => normalizedFirstRow[index] === header);
+    const dataRows = hasExpectedHeaderRow ? values.slice(1) : values;
 
-    return dataRows.map(row => {
-        const item = {};
-        for (let i = 0; i < headers.length; i += 1) {
-            const key = headers[i] || EXPECTED_HEADERS[i] || `col_${i}`;
-            item[key] = row[i] ?? '';
-        }
-
-        for (let i = 0; i < EXPECTED_HEADERS.length; i += 1) {
-            const header = EXPECTED_HEADERS[i];
-            if (!(header in item)) {
-                item[header] = '';
-            }
-        }
-
-        return item;
-    });
+    return dataRows.map(row => normalizeRowByIndex(row));
 }
 
 async function fetchFromSheetsApi() {
