@@ -1,19 +1,17 @@
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1UCjOC7ChKyaWHIbp1XA_7IjeAO1cLtuUCXlVFDw0dtg';
-const SHEET_RANGE = process.env.GOOGLE_SHEET_RANGE || 'A:J';
+const SHEET_RANGE = process.env.GOOGLE_SHEET_RANGE || 'A:H';
 const SHEET_GID = process.env.GOOGLE_SHEET_GID || '0';
 const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS || 300);
 
 const EXPECTED_HEADERS = [
+    'timestamp',
+    'user',
     'task_id',
-    'task_title',
-    'team',
-    'member',
-    'status',
-    'priority',
-    'assigned_date',
-    'due_date',
-    'tags',
-    'follow_up'
+    'task',
+    'due',
+    'category',
+    'follow_up',
+    'status'
 ];
 
 function normalizeRowByIndex(sourceRow) {

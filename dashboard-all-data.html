@@ -233,11 +233,11 @@
             background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: 10px;
-            padding: 0.5rem 0.55rem;
+            padding: 0.55rem;
             position: relative;
             overflow: hidden;
             transition: all 0.25s ease;
-            min-height: 68px;
+            min-height: 74px;
         }
 
         .kpi-card:hover {
@@ -419,7 +419,7 @@
         }
 
         .chart-card canvas {
-            height: 120px !important;
+            height: 145px !important;
         }
 
         .performance-section {
@@ -428,7 +428,6 @@
 
         .performance-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 0.45rem;
         }
 
@@ -705,8 +704,6 @@
             display: none;
         }
 
-        /* Breakpoints: largest to smallest (correct cascade order) */
-
         @media (max-width: 1200px) {
             .person-card {
                 grid-template-columns: auto 1fr;
@@ -722,26 +719,6 @@
             }
         }
 
-        /* Small laptops — collapse to 3 KPI cols and 2 chart cols */
-        @media (max-width: 1024px) {
-            .kpi-grid {
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-            }
-
-            .charts-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-
-            .alerts-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-
-            .performance-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Tablet / mobile */
         @media (max-width: 768px) {
             .container {
                 padding: 0.75rem;
@@ -768,6 +745,20 @@
                 min-width: 100%;
             }
         }
+
+        @media (max-width: 1450px) {
+            .kpi-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .charts-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .alerts-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
     </style>
 </head>
 
@@ -785,7 +776,9 @@
             </div>
         </header>
 
-        <div id="teamFilters" class="filters" style="margin-bottom:0.5rem;"></div>
+        <div class="filters">
+            <div id="teamFilters" class="filters" style="margin-bottom:0;"></div>
+        </div>
 
         <div class="filters">
             <select id="memberFilter" class="member-select">
@@ -955,52 +948,30 @@
         }
 
         function parseDate(rawValue) {
-            if (rawValue === null || rawValue === undefined) return null;
+            if (rawValue === null || rawValue === undefined) {
+                return null;
+            }
             const value = String(rawValue).trim();
-            if (!value) return null;
-
-            // 1. GViz format: Date(2026,3,29) — month is 0-indexed
-            const gviz = value.match(/^Date\((\d+),(\d+),(\d+)\)/);
-            if (gviz) {
-                const d = new Date(Number(gviz[1]), Number(gviz[2]), Number(gviz[3]));
-                return isNaN(d.getTime()) ? null : d;
+            if (!value) {
+                return null;
             }
 
-            // 2. ISO datetime string (from .toISOString()): 2026-04-29T18:30:00.000Z
-            //    Extract the date part and build as LOCAL midnight to avoid UTC-shift bugs
-            const isoDatetime = value.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-            if (isoDatetime) {
-                const d = new Date(Number(isoDatetime[1]), Number(isoDatetime[2]) - 1, Number(isoDatetime[3]));
-                return isNaN(d.getTime()) ? null : d;
+            const ddmmyyyy = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+            if (ddmmyyyy) {
+                const day = Number(ddmmyyyy[1]);
+                const month = Number(ddmmyyyy[2]);
+                const year = Number(ddmmyyyy[3].length === 2 ? '20' + ddmmyyyy[3] : ddmmyyyy[3]);
+                const parsed = new Date(year, month - 1, day);
+                if (!Number.isNaN(parsed.getTime())) {
+                    return parsed;
+                }
             }
 
-            // 3. ISO date only: 2026-04-29 — parse as local midnight (not UTC)
-            const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-            if (isoDate) {
-                const d = new Date(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]));
-                return isNaN(d.getTime()) ? null : d;
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) {
+                return parsed;
             }
-
-            // 4. DD/MM/YYYY or DD-MM-YYYY
-            const dmy = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-            if (dmy) {
-                const day = Number(dmy[1]);
-                const month = Number(dmy[2]);
-                const year = Number(dmy[3].length === 2 ? '20' + dmy[3] : dmy[3]);
-                const d = new Date(year, month - 1, day);
-                if (!isNaN(d.getTime())) return d;
-            }
-
-            // 5. MM/DD/YYYY fallback (US format)
-            const mdy = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-            if (mdy) {
-                const d = new Date(Number(mdy[3]), Number(mdy[1]) - 1, Number(mdy[2]));
-                if (!isNaN(d.getTime())) return d;
-            }
-
-            // 6. Last resort — let the browser try (risky for non-standard strings)
-            const fallback = new Date(value);
-            return isNaN(fallback.getTime()) ? null : fallback;
+            return null;
         }
 
         function formatDate(date) {
@@ -1035,68 +1006,38 @@
         }
 
         function mapOpenSheetRow(row) {
-            // Supports both exact new headers (Task_Title, Team, Member …)
-            // and lowercase/alias variants returned by some proxy APIs
-            const taskTitle = String(
-                row.Task_Title || row.task_title || row.Task || row.task || ''
-            ).trim();
-            const member = String(
-                row.Member || row.member || row.User || row.user || ''
-            ).trim();
-            const teamRaw = String(
-                row.Team || row.team || row.category || row.Category || ''
-            ).trim();
+            const taskTitle = String(row.Task_Title || row.task_title || row.Task || row.task || '').trim();
+            const member = String(row.Member || row.member || row.User || row.user || '').trim();
+            const teamRaw = String(row.Team || row.team || '').trim();
             const team = teamRaw || inferTeamFromMember(member);
-
             return {
                 task_id: String(row.Task_ID || row.task_id || row.ID || row.id || '').trim(),
                 task: taskTitle || '(Untitled Task)',
                 team,
                 member: member || 'Unassigned',
                 status: normalizeStatus(row.Status || row.status || ''),
-                // Priority comes from Priority column; fall back to follow_up flag
-                priority: normalizePriority(
-                    row.Priority || row.priority ||
-                    row.follow_up || row.Follow_Up || ''
-                ),
-                assignedDate: parseDate(
-                    row.assigned_date || row.Assigned_Date ||
-                    row.AssignedDate || row.timestamp || ''
-                ),
-                dueDate: parseDate(
-                    row.Due_Date || row.due_date ||
-                    row.DueDate || row.Due || row.due || ''
-                ),
-                tags: String(row.Tags || row.tags || '').trim(),
-                followUp: String(row.follow_up || row.Follow_Up || '').trim()
+                priority: normalizePriority(row.Priority || row.priority || ''),
+                assignedDate: parseDate(row.assigned_date || row.Assigned_Date || row.AssignedDate || ''),
+                dueDate: parseDate(row.Due_Date || row.due_date || row.Due || row.due || ''),
+                tags: String(row.Tags || row.tags || '').trim()
             };
         }
 
         function mapApiRow(row) {
-            // /api/sheet-data returns rows normalised by sheet-data.js.
-            // New sheet headers: Task_ID, Task_Title, Team, Member, Status,
-            // Priority, assigned_date, Due_Date, Tags, follow_up
-            // sheet-data.js normalises keys to lowercase_underscore, so:
-            // task_id, task_title, team, member, status, priority, assigned_date, due_date, tags, follow_up
-            const taskTitle = String(row.task_title || row.Task_Title || row.task || '').trim();
-            const member = String(row.member || row.Member || row.user || '').trim();
-            const teamRaw = String(row.team || row.Team || '').trim();
+            const taskTitle = String(row.task || row.task_title || '').trim();
+            const member = String(row.user || row.member || '').trim();
+            const teamRaw = String(row.team || '').trim();
             const team = teamRaw || inferTeamFromMember(member);
-
             return {
-                task_id: String(row.task_id || row.Task_ID || '').trim(),
+                task_id: String(row.task_id || row.id || '').trim(),
                 task: taskTitle || '(Untitled Task)',
                 team,
                 member: member || 'Unassigned',
-                status: normalizeStatus(row.status || row.Status || ''),
-                priority: normalizePriority(
-                    row.priority || row.Priority ||
-                    row.follow_up || row.Follow_Up || ''
-                ),
-                assignedDate: parseDate(row.assigned_date || row.Assigned_Date || ''),
-                dueDate: parseDate(row.due_date || row.Due_Date || row.due || ''),
-                tags: String(row.tags || row.Tags || '').trim(),
-                followUp: String(row.follow_up || row.Follow_Up || '').trim()
+                status: normalizeStatus(row.status || ''),
+                priority: normalizePriority(row.priority || row.follow_up || row.category || ''),
+                assignedDate: parseDate(row.assigned_date || ''),
+                dueDate: parseDate(row.due || row.due_date || ''),
+                tags: String(row.tags || '').trim()
             };
         }
 
@@ -1104,20 +1045,11 @@
             const cells = (row && Array.isArray(row.c)) ? row.c : [];
             const get = index => {
                 const cell = cells[index];
-                if (!cell || cell.v === null || cell.v === undefined) return '';
-                // Real JS Date object (JSONP eval path)
-                if (cell.v instanceof Date) return cell.v.toISOString();
-                const str = String(cell.v);
-                // GViz Date(year,month,day) string — return as-is for parseDate
-                if (str.startsWith('Date(')) return str;
-                // Non-empty value
-                if (str !== 'null') return str;
-                // Fall back to formatted string (cell.f) if available
-                return cell.f ? String(cell.f) : '';
+                if (!cell || cell.v === null || cell.v === undefined) {
+                    return '';
+                }
+                return String(cell.v);
             };
-            // New sheet column order (A–J / indices 0–9):
-            // 0=Task_ID, 1=Task_Title, 2=Team, 3=Member, 4=Status,
-            // 5=Priority, 6=assigned_date, 7=Due_Date, 8=Tags, 9=follow_up
             return {
                 Task_ID: get(0),
                 Task_Title: get(1),
@@ -1127,8 +1059,7 @@
                 Priority: get(5),
                 assigned_date: get(6),
                 Due_Date: get(7),
-                Tags: get(8),
-                follow_up: get(9)
+                Tags: get(8)
             };
         }
 

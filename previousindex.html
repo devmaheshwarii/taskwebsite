@@ -1,0 +1,1929 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TBP Media | Team Performance Dashboard v2</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --bg-elevated: #22222e;
+            --accent-green: #00ff88;
+            --accent-red: #ff4757;
+            --accent-yellow: #ffc107;
+            --accent-blue: #4dabf7;
+            --accent-purple: #9775fa;
+            --accent-orange: #ff6b35;
+            --accent-pink: #f06595;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --border-color: #2a2a3a;
+            --gradient-green: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            --gradient-red: linear-gradient(135deg, #ff4757 0%, #cc3344 100%);
+            --gradient-yellow: linear-gradient(135deg, #ffc107 0%, #ff9500 100%);
+            --gradient-blue: linear-gradient(135deg, #4dabf7 0%, #228be6 100%);
+            --gradient-orange: linear-gradient(135deg, #ff6b35 0%, #f54200 100%);
+            --gradient-purple: linear-gradient(135deg, #9775fa 0%, #7048e8 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .container {
+            max-width: 1700px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-left h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #fff 0%, #a0a0b0 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.3rem;
+        }
+
+        .header-left .subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .version-badge {
+            background: var(--gradient-purple);
+            color: #fff;
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .last-sync {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .sync-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(1.2);
+            }
+        }
+
+        .filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 0.6rem 1.2rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .filter-btn:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .filter-btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: #000;
+            font-weight: 500;
+        }
+
+        /* KPI Grid - Now 7 cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.2rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 20px 40px -20px rgba(77, 171, 247, 0.3);
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .kpi-card.green::before {
+            background: var(--gradient-green);
+        }
+
+        .kpi-card.red::before {
+            background: var(--gradient-red);
+        }
+
+        .kpi-card.yellow::before {
+            background: var(--gradient-yellow);
+        }
+
+        .kpi-card.blue::before {
+            background: var(--gradient-blue);
+        }
+
+        .kpi-card.orange::before {
+            background: var(--gradient-orange);
+        }
+
+        .kpi-card.purple::before {
+            background: var(--gradient-purple);
+        }
+
+        .kpi-icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .kpi-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+        }
+
+        .kpi-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 0.2rem;
+        }
+
+        .kpi-card.green .kpi-value {
+            color: var(--accent-green);
+        }
+
+        .kpi-card.red .kpi-value {
+            color: var(--accent-red);
+        }
+
+        .kpi-card.yellow .kpi-value {
+            color: var(--accent-yellow);
+        }
+
+        .kpi-card.blue .kpi-value {
+            color: var(--accent-blue);
+        }
+
+        .kpi-card.orange .kpi-value {
+            color: var(--accent-orange);
+        }
+
+        .kpi-card.purple .kpi-value {
+            color: var(--accent-purple);
+        }
+
+        .kpi-change {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--accent-blue);
+            border-radius: 2px;
+        }
+
+        /* Alerts Section */
+        .alerts-section {
+            margin-bottom: 2rem;
+        }
+
+        .alerts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .alert-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .alert-card.urgent {
+            border-left: 4px solid var(--accent-red);
+        }
+
+        .alert-card.warning {
+            border-left: 4px solid var(--accent-yellow);
+        }
+
+        .alert-card.success {
+            border-left: 4px solid var(--accent-green);
+        }
+
+        .alert-card.info {
+            border-left: 4px solid var(--accent-purple);
+        }
+
+        .alert-icon {
+            font-size: 1.4rem;
+        }
+
+        .alert-content h4 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .alert-content p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+        }
+
+        .chart-card h3 {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        /* Team Performance */
+        .performance-section {
+            margin-bottom: 2rem;
+        }
+
+        .performance-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .person-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .person-card:hover {
+            border-color: var(--accent-blue);
+            background: var(--bg-elevated);
+        }
+
+        .person-card.top-performer {
+            border-color: var(--accent-green);
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.05) 0%, transparent 100%);
+        }
+
+        .person-card.top-performer::after {
+            content: '⭐ TOP PERFORMER';
+            position: absolute;
+            top: -10px;
+            right: 20px;
+            background: var(--gradient-green);
+            color: #000;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        .person-card.needs-attention {
+            border-color: var(--accent-red);
+            background: linear-gradient(135deg, rgba(255, 71, 87, 0.05) 0%, transparent 100%);
+        }
+
+        .person-card.needs-attention::after {
+            content: '🔴 NEEDS ATTENTION';
+            position: absolute;
+            top: -10px;
+            right: 20px;
+            background: var(--gradient-red);
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        .person-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.2rem;
+            color: #000;
+        }
+
+        .person-info h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .person-info .team-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .person-stats {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-group {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .stat-block {
+            text-align: center;
+        }
+
+        .stat-block .stat-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-block .stat-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-divider {
+            width: 1px;
+            background: var(--border-color);
+            margin: 0 0.5rem;
+        }
+
+        /* Follow-up badges */
+        .followup-stats {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .followup-badge {
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .followup-badge.urgent {
+            background: rgba(255, 71, 87, 0.2);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+        }
+
+        .followup-badge.reminder {
+            background: rgba(255, 193, 7, 0.2);
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
+        }
+
+        .followup-badge.no-due {
+            background: rgba(151, 117, 250, 0.2);
+            color: var(--accent-purple);
+            border: 1px solid var(--accent-purple);
+        }
+
+        .completion-section {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            min-width: 150px;
+        }
+
+        .completion-bar {
+            width: 150px;
+        }
+
+        .completion-bar .bar-bg {
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.3rem;
+        }
+
+        .completion-bar .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .completion-bar .bar-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            text-align: right;
+        }
+
+        /* Task List */
+        .task-preview {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.8rem 1rem;
+            background: var(--bg-elevated);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+        }
+
+        .task-item:hover {
+            background: var(--bg-secondary);
+            transform: translateX(4px);
+        }
+
+        .task-item .task-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .task-item .task-status.urgent {
+            background: var(--accent-red);
+            box-shadow: 0 0 10px var(--accent-red);
+        }
+
+        .task-item .task-status.reminder {
+            background: var(--accent-yellow);
+        }
+
+        .task-item .task-status.overdue {
+            background: var(--accent-orange);
+        }
+
+        .task-item .task-status.pending {
+            background: var(--accent-yellow);
+        }
+
+        .task-item .task-status.no-due {
+            background: var(--accent-purple);
+        }
+
+        .task-item .task-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .task-item .task-link {
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            background: rgba(77, 171, 247, 0.1);
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .task-item .task-link:hover {
+            background: var(--accent-blue);
+            color: #000;
+        }
+
+        .task-item .task-assignee {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            min-width: 60px;
+        }
+
+        .task-item .task-due {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .task-item .task-severity {
+            font-size: 0.6rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .task-item .task-severity.urgent {
+            background: var(--accent-red);
+            color: #fff;
+        }
+
+        .task-item .task-severity.reminder {
+            background: var(--accent-yellow);
+            color: #000;
+        }
+
+        .task-item .task-severity.no-due {
+            background: var(--accent-purple);
+            color: #fff;
+        }
+
+        .task-item .task-severity.overdue {
+            background: var(--accent-orange);
+            color: #000;
+        }
+
+        .task-item .task-severity.pending {
+            background: rgba(255, 193, 7, 0.2);
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
+        }
+
+        .task-item .task-severity.done,
+        .task-item .task-severity.completed {
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .person-card {
+                grid-template-columns: auto 1fr;
+            }
+
+            .person-stats {
+                grid-column: 1 / -1;
+            }
+
+            .completion-section {
+                grid-column: 1 / -1;
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>TBP Media Team Dashboard <span class="version-badge">v2.0</span></h1>
+                <span class="subtitle">Task Performance Tracker • Service Team • Enhanced Analytics</span>
+            </div>
+            <div class="header-right">
+                <span class="last-sync">Last sync: 21 Apr 2026, 11:45 PM</span>
+                <div class="sync-indicator"></div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <div class="filters">
+            <button class="filter-btn active" onclick="filterTeam('all')">All Teams</button>
+            <button class="filter-btn" onclick="filterTeam('operations')">Operations</button>
+            <button class="filter-btn" onclick="filterTeam('product')">Product</button>
+            <button class="filter-btn" onclick="filterTeam('sales')">Sales</button>
+        </div>
+
+        <!-- KPI Cards - Now 7 cards with new additions -->
+        <div class="kpi-grid">
+            <div class="kpi-card blue">
+                <div class="kpi-icon">📊</div>
+                <div class="kpi-label">Total Tasks</div>
+                <div class="kpi-value">113</div>
+                <div class="kpi-change">Across 5 team members</div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-label">Completed</div>
+                <div class="kpi-value">90</div>
+                <div class="kpi-change">79.6% completion rate</div>
+            </div>
+            <div class="kpi-card yellow">
+                <div class="kpi-icon">⏳</div>
+                <div class="kpi-label">Pending</div>
+                <div class="kpi-value">23</div>
+                <div class="kpi-change">20.4% of total</div>
+            </div>
+            <!-- NEW: Urgent KPI -->
+            <div class="kpi-card red">
+                <div class="kpi-icon">🔥</div>
+                <div class="kpi-label">Urgent (>48hrs)</div>
+                <div class="kpi-value">10</div>
+                <div class="kpi-change">Critical escalation needed</div>
+            </div>
+            <!-- NEW: Due Today KPI -->
+            <div class="kpi-card orange">
+                <div class="kpi-icon">📅</div>
+                <div class="kpi-label">Due Today</div>
+                <div class="kpi-value">4</div>
+                <div class="kpi-change">Action needed now!</div>
+            </div>
+            <!-- NEW: No Due Date KPI -->
+            <div class="kpi-card purple">
+                <div class="kpi-icon">❓</div>
+                <div class="kpi-label">No Due Date</div>
+                <div class="kpi-value">19</div>
+                <div class="kpi-change">Needs deadline assignment</div>
+            </div>
+            <div class="kpi-card yellow">
+                <div class="kpi-icon">⚠️</div>
+                <div class="kpi-label">Overdue Total</div>
+                <div class="kpi-value">26</div>
+                <div class="kpi-change">10 urgent + 16 reminder</div>
+            </div>
+        </div>
+
+        <!-- Alerts Section - Updated with new alerts -->
+        <div class="alerts-section">
+            <h2 class="section-title">Action Required</h2>
+            <div class="alerts-grid">
+                <div class="alert-card urgent">
+                    <span class="alert-icon">🔥</span>
+                    <div class="alert-content">
+                        <h4>Lakshya has 5 URGENT tasks (>48hrs overdue)</h4>
+                        <p>31% completion • Critical intervention needed</p>
+                    </div>
+                </div>
+                <div class="alert-card urgent">
+                    <span class="alert-icon">🚨</span>
+                    <div class="alert-content">
+                        <h4>Rahul has 4 URGENT tasks (>48hrs overdue)</h4>
+                        <p>87% completion but critical delays</p>
+                    </div>
+                </div>
+                <div class="alert-card info">
+                    <span class="alert-icon">❓</span>
+                    <div class="alert-content">
+                        <h4>19 tasks have NO DUE DATE</h4>
+                        <p>Dev: 8 | Lakshya: 5 | Kamal: 3 | Others: 3</p>
+                    </div>
+                </div>
+                <div class="alert-card warning">
+                    <span class="alert-icon">📅</span>
+                    <div class="alert-content">
+                        <h4>4 tasks due TODAY</h4>
+                        <p>Check morning standup priorities</p>
+                    </div>
+                </div>
+                <div class="alert-card success">
+                    <span class="alert-icon">🏆</span>
+                    <div class="alert-content">
+                        <h4>Jai is this week's TOP PERFORMER!</h4>
+                        <p>100% completion • 0 pending • 0 urgent</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Completion Rate by Person</h3>
+                <canvas id="completionChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Task Distribution</h3>
+                <canvas id="distributionChart"></canvas>
+            </div>
+            <!-- NEW: Urgency Breakdown Chart -->
+            <div class="chart-card">
+                <h3>🔥 Overdue Severity Breakdown</h3>
+                <canvas id="urgencyChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>❓ No Due Date by Person</h3>
+                <canvas id="noDueChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Team Performance - Updated with new metrics -->
+        <div class="performance-section">
+            <h2 class="section-title">Team Performance (Enhanced)</h2>
+            <div class="performance-grid">
+                <!-- Jai - Top Performer -->
+                <div class="person-card top-performer" data-team="product">
+                    <div class="person-avatar" style="background: var(--gradient-green);">JA</div>
+                    <div class="person-info">
+                        <h4>Jai Angurala</h4>
+                        <span class="team-badge">Product</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 0 Urgent</span>
+                            <span class="followup-badge reminder">⚠️ 2 Reminder</span>
+                            <span class="followup-badge no-due">❓ 3 No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">20</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">20</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">0</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">2</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: 100%; background: var(--gradient-green);"></div>
+                            </div>
+                            <div class="bar-label">100% Complete</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kamal -->
+                <div class="person-card" data-team="operations">
+                    <div class="person-avatar" style="background: var(--gradient-blue);">KS</div>
+                    <div class="person-info">
+                        <h4>Kamal Singh</h4>
+                        <span class="team-badge">Operations</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 1 Urgent</span>
+                            <span class="followup-badge reminder">⚠️ 4 Reminder</span>
+                            <span class="followup-badge no-due">❓ 3 No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">27</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">23</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">4</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">5</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: 85%; background: var(--gradient-green);"></div>
+                            </div>
+                            <div class="bar-label">85% Complete</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rahul -->
+                <div class="person-card" data-team="operations">
+                    <div class="person-avatar" style="background: var(--gradient-yellow);">RJ</div>
+                    <div class="person-info">
+                        <h4>Rahul Jha</h4>
+                        <span class="team-badge">Operations</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 4 Urgent</span>
+                            <span class="followup-badge reminder">⚠️ 3 Reminder</span>
+                            <span class="followup-badge no-due">❓ 2 No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">23</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">20</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">3</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">7</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: 87%; background: var(--gradient-yellow);"></div>
+                            </div>
+                            <div class="bar-label">87% Complete</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dev -->
+                <div class="person-card" data-team="operations">
+                    <div class="person-avatar" style="background: var(--gradient-blue);">DM</div>
+                    <div class="person-info">
+                        <h4>Dev Maheswari</h4>
+                        <span class="team-badge">Operations</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 0 Urgent</span>
+                            <span class="followup-badge reminder">⚠️ 3 Reminder</span>
+                            <span class="followup-badge no-due">❓ 8 No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">30</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">23</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">7</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">3</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: 77%; background: var(--gradient-yellow);"></div>
+                            </div>
+                            <div class="bar-label">77% Complete</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lakshya - Needs Attention -->
+                <div class="person-card needs-attention" data-team="operations">
+                    <div class="person-avatar" style="background: var(--gradient-red);">LJ</div>
+                    <div class="person-info">
+                        <h4>Lakshya Jaiswal</h4>
+                        <span class="team-badge">Operations</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 5 Urgent</span>
+                            <span class="followup-badge reminder">⚠️ 4 Reminder</span>
+                            <span class="followup-badge no-due">❓ 5 No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">13</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">4</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">9</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">9</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: 31%; background: var(--gradient-red);"></div>
+                            </div>
+                            <div class="bar-label">31% Complete</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Critical Tasks with Clickable Links -->
+        <div class="task-preview">
+            <h2 class="section-title">🔥 Critical Overdue Tasks (Clickable Links)</h2>
+            <div class="task-list">
+                <div class="task-item">
+                    <div class="task-status urgent"></div>
+                    <span class="task-severity urgent">URGENT</span>
+                    <span class="task-name">do add n8n</span>
+                    <span class="task-assignee">Lakshya</span>
+                    <span class="task-due">14-04-2026</span>
+                    <a href="https://tasks.google.com/task/MDEyNDU2NjYzMTIxOTQ0NDMzNjY6MDow" target="_blank"
+                        class="task-link">Open Task →</a>
+                </div>
+                <div class="task-item">
+                    <div class="task-status urgent"></div>
+                    <span class="task-severity urgent">URGENT</span>
+                    <span class="task-name">Collect all credentials for members for google tasks</span>
+                    <span class="task-assignee">Lakshya</span>
+                    <span class="task-due">15-04-2026</span>
+                    <a href="https://tasks.google.com/" target="_blank" class="task-link">Open Task →</a>
+                </div>
+                <div class="task-item">
+                    <div class="task-status urgent"></div>
+                    <span class="task-severity urgent">URGENT</span>
+                    <span class="task-name">https://github.com/paperclipai/paperclip</span>
+                    <span class="task-assignee">Dev</span>
+                    <span class="task-due">17-03-2026</span>
+                    <a href="https://tasks.google.com/" target="_blank" class="task-link">Open Task →</a>
+                </div>
+                <div class="task-item">
+                    <div class="task-status reminder"></div>
+                    <span class="task-severity reminder">24-48H</span>
+                    <span class="task-name">https://machined.ai/pricing</span>
+                    <span class="task-assignee">Dev</span>
+                    <span class="task-due">19-03-2026</span>
+                    <a href="https://tasks.google.com/" target="_blank" class="task-link">Open Task →</a>
+                </div>
+                <div class="task-item">
+                    <div class="task-status urgent"></div>
+                    <span class="task-severity urgent">URGENT</span>
+                    <span class="task-name">Review and update Rankkking pricing</span>
+                    <span class="task-assignee">Rahul</span>
+                    <span class="task-due">16-04-2026</span>
+                    <a href="https://tasks.google.com/" target="_blank" class="task-link">Open Task →</a>
+                </div>
+                <div class="task-item">
+                    <div class="task-status no-due"></div>
+                    <span class="task-severity" style="background: var(--accent-purple); color: #fff;">NO DUE</span>
+                    <span class="task-name">Setup LinkedIn automation for Tarun</span>
+                    <span class="task-assignee">Dev</span>
+                    <span class="task-due">--</span>
+                    <a href="https://tasks.google.com/" target="_blank" class="task-link">Open Task →</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>TBP Media Task Dashboard v2.0 • Powered by Google Tasks + n8n • Syncs at 10 AM & 2 PM daily</p>
+            <p style="margin-top: 0.5rem; font-size: 0.7rem;">New: 🔥 Urgent Tracking | 📅 Due Today | ❓ No Due Date
+                Alerts | 🔗 Clickable Links</p>
+        </footer>
+    </div>
+
+    <script>
+        Chart.defaults.color = '#a0a0b0';
+        Chart.defaults.borderColor = '#2a2a3a';
+
+        const API_ENDPOINT = '/api/sheet-data';
+        const AUTO_REFRESH_MS = 5 * 60 * 1000;
+        const SHEET_ID = '1UCjOC7ChKyaWHIbp1XA_7IjeAO1cLtuUCXlVFDw0dtg';
+        const SHEET_GID = '0';
+
+        const TEAM_MAP = {
+            'jai angurala': 'product',
+            'kamal singh': 'operations',
+            'rahul jha': 'operations',
+            'dev maheswari': 'operations',
+            'lakshya jaiswal': 'operations'
+        };
+
+        const chartInstances = {
+            completion: null,
+            distribution: null,
+            urgency: null,
+            noDue: null
+        };
+
+        function escapeHtml(value) {
+            const str = String(value ?? '');
+            return str
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function formatDisplayDate(date) {
+            if (!date) {
+                return '--';
+            }
+
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}-${month}-${year}`;
+        }
+
+        function parseDueDate(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return null;
+            }
+
+            const value = String(rawValue).trim();
+            if (!value) {
+                return null;
+            }
+
+            const ddmmyyyy = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+            if (ddmmyyyy) {
+                const day = Number(ddmmyyyy[1]);
+                const month = Number(ddmmyyyy[2]);
+                const year = Number(ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3]);
+                const parsed = new Date(year, month - 1, day);
+                if (!Number.isNaN(parsed.getTime())) {
+                    return parsed;
+                }
+            }
+
+            const date = new Date(value);
+            if (!Number.isNaN(date.getTime())) {
+                return date;
+            }
+
+            return null;
+        }
+
+        function normalizeStatus(status) {
+            return String(status ?? '').trim().toLowerCase();
+        }
+
+        function mapGvizRowToExpectedShape(row) {
+            const cells = (row && Array.isArray(row.c)) ? row.c : [];
+            const getValue = index => {
+                const cell = cells[index];
+                if (!cell || cell.v === null || cell.v === undefined) {
+                    return '';
+                }
+                return String(cell.v);
+            };
+
+            return {
+                timestamp: getValue(0),
+                user: getValue(1),
+                task_id: getValue(2),
+                task: getValue(3),
+                due: getValue(4),
+                category: getValue(5),
+                follow_up: getValue(6),
+                status: getValue(7)
+            };
+        }
+
+        function fetchSheetRowsViaJsonp() {
+            return new Promise((resolve, reject) => {
+                const callbackName = `sheetJsonpCallback_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+                const script = document.createElement('script');
+
+                const cleanup = () => {
+                    if (script.parentNode) {
+                        script.parentNode.removeChild(script);
+                    }
+                    delete window[callbackName];
+                };
+
+                window[callbackName] = payload => {
+                    try {
+                        const rows = (payload && payload.table && Array.isArray(payload.table.rows))
+                            ? payload.table.rows.map(mapGvizRowToExpectedShape)
+                            : [];
+                        cleanup();
+                        resolve(rows);
+                    } catch (error) {
+                        cleanup();
+                        reject(error);
+                    }
+                };
+
+                script.onerror = () => {
+                    cleanup();
+                    reject(new Error('JSONP script load failed for public Google Sheet endpoint.'));
+                };
+
+                script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(SHEET_ID)}/gviz/tq?gid=${encodeURIComponent(SHEET_GID)}&tqx=out:json;responseHandler:${callbackName}`;
+                document.head.appendChild(script);
+            });
+        }
+
+        function isCompleted(status) {
+            const normalized = normalizeStatus(status);
+            return normalized === 'done' || normalized === 'completed';
+        }
+
+        function computeTaskMeta(task, now) {
+            const dueDate = parseDueDate(task.due);
+            const completed = isCompleted(task.status);
+
+            if (!dueDate) {
+                return {
+                    ...task,
+                    dueDate: null,
+                    completed,
+                    overdue: false,
+                    dueToday: false,
+                    urgent: false,
+                    reminder: false,
+                    noDue: true,
+                    hoursOverdue: 0
+                };
+            }
+
+            const dueMidnight = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+            const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const overdue = !completed && dueMidnight < todayMidnight;
+            const dueToday = !completed && dueMidnight.getTime() === todayMidnight.getTime();
+            const hoursOverdue = overdue ? (now.getTime() - dueMidnight.getTime()) / (1000 * 60 * 60) : 0;
+
+            return {
+                ...task,
+                dueDate,
+                completed,
+                overdue,
+                dueToday,
+                urgent: overdue && hoursOverdue > 48,
+                reminder: overdue && hoursOverdue > 0 && hoursOverdue <= 48,
+                noDue: false,
+                hoursOverdue
+            };
+        }
+
+        function teamForUser(userName) {
+            const key = String(userName || '').trim().toLowerCase();
+            return TEAM_MAP[key] || 'operations';
+        }
+
+        function getTaskLink(task) {
+            const taskId = String(task.task_id || '').trim();
+            if (/^https?:\/\//i.test(taskId)) {
+                return taskId;
+            }
+
+            const taskText = String(task.task || '').trim();
+            const urlInTask = taskText.match(/https?:\/\/[^\s]+/i);
+            if (urlInTask) {
+                return urlInTask[0];
+            }
+
+            return 'https://tasks.google.com/';
+        }
+
+        function setLoadingState(isLoading) {
+            const existing = document.getElementById('loadingStateBanner');
+            if (isLoading && !existing) {
+                const banner = document.createElement('div');
+                banner.id = 'loadingStateBanner';
+                banner.style.position = 'sticky';
+                banner.style.top = '0';
+                banner.style.zIndex = '2001';
+                banner.style.padding = '0.5rem 1rem';
+                banner.style.background = 'rgba(77, 171, 247, 0.12)';
+                banner.style.borderBottom = '1px solid #4dabf7';
+                banner.style.fontFamily = "'JetBrains Mono', monospace";
+                banner.style.fontSize = '0.75rem';
+                banner.style.color = '#a0a0b0';
+                banner.textContent = 'Syncing dashboard data from Google Sheets...';
+                document.body.prepend(banner);
+            }
+
+            if (!isLoading && existing) {
+                existing.remove();
+            }
+        }
+
+        function renderKpis(metrics, userCount) {
+            const kpiGrid = document.querySelector('.kpi-grid');
+            if (!kpiGrid) {
+                return;
+            }
+
+            const completionRate = metrics.totalTasks ? ((metrics.completed / metrics.totalTasks) * 100).toFixed(1) : '0.0';
+            const pendingRate = metrics.totalTasks ? ((metrics.pending / metrics.totalTasks) * 100).toFixed(1) : '0.0';
+
+            kpiGrid.innerHTML = `
+                <div class="kpi-card blue">
+                    <div class="kpi-icon">📊</div>
+                    <div class="kpi-label">Total Tasks</div>
+                    <div class="kpi-value">${metrics.totalTasks}</div>
+                    <div class="kpi-change">Across ${userCount} team members</div>
+                </div>
+                <div class="kpi-card green">
+                    <div class="kpi-icon">✅</div>
+                    <div class="kpi-label">Completed</div>
+                    <div class="kpi-value">${metrics.completed}</div>
+                    <div class="kpi-change">${completionRate}% completion rate</div>
+                </div>
+                <div class="kpi-card yellow">
+                    <div class="kpi-icon">⏳</div>
+                    <div class="kpi-label">Pending</div>
+                    <div class="kpi-value">${metrics.pending}</div>
+                    <div class="kpi-change">${pendingRate}% of total</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-icon">🔥</div>
+                    <div class="kpi-label">Urgent (&gt;48hrs)</div>
+                    <div class="kpi-value">${metrics.urgent}</div>
+                    <div class="kpi-change">Critical escalation needed</div>
+                </div>
+                <div class="kpi-card orange">
+                    <div class="kpi-icon">📅</div>
+                    <div class="kpi-label">Due Today</div>
+                    <div class="kpi-value">${metrics.dueToday}</div>
+                    <div class="kpi-change">Action needed now</div>
+                </div>
+                <div class="kpi-card purple">
+                    <div class="kpi-icon">❓</div>
+                    <div class="kpi-label">No Due Date</div>
+                    <div class="kpi-value">${metrics.noDueDate}</div>
+                    <div class="kpi-change">Needs deadline assignment</div>
+                </div>
+                <div class="kpi-card yellow">
+                    <div class="kpi-icon">⚠️</div>
+                    <div class="kpi-label">Overdue Total</div>
+                    <div class="kpi-value">${metrics.overdue}</div>
+                    <div class="kpi-change">${metrics.urgent} urgent + ${metrics.reminder} reminder</div>
+                </div>
+            `;
+        }
+
+        function renderAlerts(metrics, perUserStats) {
+            const alertsGrid = document.querySelector('.alerts-grid');
+            if (!alertsGrid) {
+                return;
+            }
+
+            const sortedByUrgent = [...perUserStats].sort((a, b) => b.urgent - a.urgent);
+            const topUrgent = sortedByUrgent[0];
+            const secondUrgent = sortedByUrgent[1];
+            const topPerformer = [...perUserStats].sort((a, b) => b.completionRate - a.completionRate)[0];
+
+            const urgentCard = topUrgent && topUrgent.urgent > 0
+                ? `<div class="alert-card urgent">
+                        <span class="alert-icon">🔥</span>
+                        <div class="alert-content">
+                            <h4>${escapeHtml(topUrgent.user)} has ${topUrgent.urgent} URGENT tasks (&gt;48hrs overdue)</h4>
+                            <p>${topUrgent.completionRate.toFixed(0)}% completion • Critical intervention needed</p>
+                        </div>
+                   </div>`
+                : '';
+
+            const secondUrgentCard = secondUrgent && secondUrgent.urgent > 0
+                ? `<div class="alert-card urgent">
+                        <span class="alert-icon">🚨</span>
+                        <div class="alert-content">
+                            <h4>${escapeHtml(secondUrgent.user)} has ${secondUrgent.urgent} URGENT tasks (&gt;48hrs overdue)</h4>
+                            <p>${secondUrgent.completionRate.toFixed(0)}% completion • Critical delays detected</p>
+                        </div>
+                   </div>`
+                : '';
+
+            alertsGrid.innerHTML = `
+                ${urgentCard}
+                ${secondUrgentCard}
+                <div class="alert-card info">
+                    <span class="alert-icon">❓</span>
+                    <div class="alert-content">
+                        <h4>${metrics.noDueDate} tasks have NO DUE DATE</h4>
+                        <p>Needs backlog hygiene and due date assignment</p>
+                    </div>
+                </div>
+                <div class="alert-card warning">
+                    <span class="alert-icon">📅</span>
+                    <div class="alert-content">
+                        <h4>${metrics.dueToday} tasks due TODAY</h4>
+                        <p>Check standup priorities and owners</p>
+                    </div>
+                </div>
+                <div class="alert-card success">
+                    <span class="alert-icon">🏆</span>
+                    <div class="alert-content">
+                        <h4>${escapeHtml(topPerformer?.user || 'No user data')} is current TOP PERFORMER</h4>
+                        <p>${(topPerformer?.completionRate || 0).toFixed(0)}% completion • Keep momentum</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function buildPersonCard(stat, flags) {
+            const cardClasses = ['person-card'];
+            if (flags.topPerformerUser === stat.user) {
+                cardClasses.push('top-performer');
+            }
+            if (flags.needsAttentionUser === stat.user) {
+                cardClasses.push('needs-attention');
+            }
+
+            const initials = stat.user
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(part => part[0].toUpperCase())
+                .join('') || 'NA';
+
+            const barColor = stat.completionRate >= 90
+                ? 'var(--gradient-green)'
+                : stat.completionRate >= 70
+                    ? 'var(--gradient-yellow)'
+                    : 'var(--gradient-red)';
+
+            return `
+                <div class="${cardClasses.join(' ')}" data-team="${teamForUser(stat.user)}">
+                    <div class="person-avatar" style="background: var(--gradient-blue);">${escapeHtml(initials)}</div>
+                    <div class="person-info">
+                        <h4>${escapeHtml(stat.user)}</h4>
+                        <span class="team-badge">${escapeHtml(teamForUser(stat.user))}</span>
+                        <div class="followup-stats">
+                            <span class="followup-badge urgent">🔥 ${stat.urgent} Urgent</span>
+                            <span class="followup-badge reminder">⚠️ ${stat.reminder} Reminder</span>
+                            <span class="followup-badge no-due">❓ ${stat.noDueDate} No Due</span>
+                        </div>
+                    </div>
+                    <div class="person-stats">
+                        <div class="stat-group">
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-blue);">${stat.total}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-green);">${stat.completed}</div>
+                                <div class="stat-label">Done</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-yellow);">${stat.pending}</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-value" style="color: var(--accent-red);">${stat.overdue}</div>
+                                <div class="stat-label">Overdue</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="completion-section">
+                        <div class="completion-bar">
+                            <div class="bar-bg">
+                                <div class="bar-fill" style="width: ${stat.completionRate.toFixed(0)}%; background: ${barColor};"></div>
+                            </div>
+                            <div class="bar-label">${stat.completionRate.toFixed(0)}% Complete</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPerformanceCards(perUserStats) {
+            const grid = document.querySelector('.performance-grid');
+            if (!grid) {
+                return;
+            }
+
+            const topPerformer = [...perUserStats].sort((a, b) => b.completionRate - a.completionRate)[0];
+            const needsAttention = [...perUserStats]
+                .filter(stat => stat.total > 0)
+                .sort((a, b) => a.completionRate - b.completionRate)[0];
+
+            const flags = {
+                topPerformerUser: topPerformer ? topPerformer.user : '',
+                needsAttentionUser: needsAttention ? needsAttention.user : ''
+            };
+
+            grid.innerHTML = perUserStats
+                .sort((a, b) => b.total - a.total)
+                .map(stat => buildPersonCard(stat, flags))
+                .join('');
+        }
+
+        function taskSeverity(task) {
+            if (task.urgent) {
+                return { key: 'urgent', label: 'URGENT' };
+            }
+            if (task.reminder) {
+                return { key: 'reminder', label: '24-48H' };
+            }
+            if (task.noDue) {
+                return { key: 'no-due', label: 'NO DUE' };
+            }
+            if (task.overdue) {
+                return { key: 'overdue', label: 'OVERDUE' };
+            }
+            return { key: 'pending', label: normalizeStatus(task.status) || 'PENDING' };
+        }
+
+        function renderTaskList(tasks) {
+            const taskList = document.querySelector('.task-list');
+            if (!taskList) {
+                return;
+            }
+
+            const ordered = [...tasks].sort((a, b) => {
+                const rankA = a.urgent ? 0 : a.reminder ? 1 : a.overdue ? 2 : a.noDue ? 4 : 3;
+                const rankB = b.urgent ? 0 : b.reminder ? 1 : b.overdue ? 2 : b.noDue ? 4 : 3;
+                if (rankA !== rankB) {
+                    return rankA - rankB;
+                }
+
+                const timeA = a.dueDate ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+                const timeB = b.dueDate ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+                return timeA - timeB;
+            }).slice(0, 30);
+
+            taskList.innerHTML = ordered.map(task => {
+                const severity = taskSeverity(task);
+                const safeTask = escapeHtml(task.task || '(untitled task)');
+                const safeUser = escapeHtml(task.user || 'Unassigned');
+                const dueLabel = task.noDue ? '--' : formatDisplayDate(task.dueDate);
+                const link = getTaskLink(task);
+
+                return `
+                    <div class="task-item">
+                        <div class="task-status ${severity.key}"></div>
+                        <span class="task-severity ${severity.key}">${escapeHtml(severity.label.toUpperCase())}</span>
+                        <span class="task-name">${safeTask}</span>
+                        <span class="task-assignee">${safeUser}</span>
+                        <span class="task-due">${escapeHtml(dueLabel)}</span>
+                        <a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" class="task-link">Open Task →</a>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function destroyChart(chart) {
+            if (chart) {
+                chart.destroy();
+            }
+        }
+
+        function renderCharts(metrics, perUserStats) {
+            const completionLabels = perUserStats.map(item => item.user);
+            const completionData = perUserStats.map(item => Number(item.completionRate.toFixed(1)));
+            const completionColors = perUserStats.map(item => item.completionRate >= 90 ? '#00ff88' : item.completionRate >= 70 ? '#ffc107' : '#ff4757');
+
+            destroyChart(chartInstances.completion);
+            chartInstances.completion = new Chart(document.getElementById('completionChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: completionLabels,
+                    datasets: [{
+                        label: 'Completion Rate %',
+                        data: completionData,
+                        backgroundColor: completionColors,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, grid: { color: '#2a2a3a' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            destroyChart(chartInstances.distribution);
+            chartInstances.distribution = new Chart(document.getElementById('distributionChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed', 'Pending', 'Overdue', 'No Due Date'],
+                    datasets: [{
+                        data: [metrics.completed, metrics.pending, metrics.overdue, metrics.noDueDate],
+                        backgroundColor: ['#00ff88', '#ffc107', '#ff4757', '#9775fa'],
+                        borderWidth: 0,
+                        spacing: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom', labels: { padding: 15 } } },
+                    cutout: '65%'
+                }
+            });
+
+            destroyChart(chartInstances.urgency);
+            chartInstances.urgency = new Chart(document.getElementById('urgencyChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: perUserStats.map(item => item.user),
+                    datasets: [
+                        {
+                            label: '🔥 Urgent (>48hrs)',
+                            data: perUserStats.map(item => item.urgent),
+                            backgroundColor: '#ff4757',
+                            borderRadius: 4
+                        },
+                        {
+                            label: '⚠️ Reminder (24-48hrs)',
+                            data: perUserStats.map(item => item.reminder),
+                            backgroundColor: '#ffc107',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, grid: { color: '#2a2a3a' }, beginAtZero: true }
+                    }
+                }
+            });
+
+            destroyChart(chartInstances.noDue);
+            chartInstances.noDue = new Chart(document.getElementById('noDueChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: perUserStats.map(item => item.user),
+                    datasets: [{
+                        label: 'Tasks Without Due Date',
+                        data: perUserStats.map(item => item.noDueDate),
+                        backgroundColor: '#9775fa',
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: '#2a2a3a' } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function computeDashboardData(rawRows) {
+            const now = new Date();
+            const enrichedTasks = rawRows.map(row => computeTaskMeta(row, now));
+
+            const metrics = {
+                totalTasks: enrichedTasks.length,
+                completed: 0,
+                pending: 0,
+                overdue: 0,
+                noDueDate: 0,
+                urgent: 0,
+                dueToday: 0,
+                reminder: 0
+            };
+
+            const byUser = new Map();
+
+            for (const task of enrichedTasks) {
+                if (!byUser.has(task.user)) {
+                    byUser.set(task.user, {
+                        user: task.user || 'Unassigned',
+                        total: 0,
+                        completed: 0,
+                        pending: 0,
+                        overdue: 0,
+                        noDueDate: 0,
+                        urgent: 0,
+                        reminder: 0,
+                        dueToday: 0,
+                        completionRate: 0
+                    });
+                }
+
+                const userAgg = byUser.get(task.user);
+                userAgg.total += 1;
+
+                if (task.completed) {
+                    metrics.completed += 1;
+                    userAgg.completed += 1;
+                } else {
+                    metrics.pending += 1;
+                    userAgg.pending += 1;
+                }
+
+                if (task.overdue) {
+                    metrics.overdue += 1;
+                    userAgg.overdue += 1;
+                }
+                if (task.noDue) {
+                    metrics.noDueDate += 1;
+                    userAgg.noDueDate += 1;
+                }
+                if (task.urgent) {
+                    metrics.urgent += 1;
+                    userAgg.urgent += 1;
+                }
+                if (task.reminder) {
+                    metrics.reminder += 1;
+                    userAgg.reminder += 1;
+                }
+                if (task.dueToday) {
+                    metrics.dueToday += 1;
+                    userAgg.dueToday += 1;
+                }
+            }
+
+            const perUserStats = Array.from(byUser.values()).map(item => ({
+                ...item,
+                completionRate: item.total ? (item.completed / item.total) * 100 : 0
+            }));
+
+            return { metrics, perUserStats, enrichedTasks };
+        }
+
+        function setLastSyncTime(date = new Date()) {
+            const syncElement = document.querySelector('.last-sync');
+            if (!syncElement) {
+                return;
+            }
+
+            const formatted = date.toLocaleString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            syncElement.textContent = `Last sync: ${formatted}`;
+        }
+
+        async function fetchSheetRows() {
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store'
+                });
+
+                if (!response.ok) {
+                    const body = await response.text();
+                    throw new Error(`API error (${response.status}): ${body}`);
+                }
+
+                const payload = await response.json();
+                if (!payload || !Array.isArray(payload.rows)) {
+                    throw new Error('Invalid API payload. Expected { rows: [] }.');
+                }
+
+                return payload.rows;
+            } catch (apiError) {
+                console.warn('Primary API fetch failed, switching to public-sheet JSONP fallback:', apiError);
+                const fallbackRows = await fetchSheetRowsViaJsonp();
+                if (!Array.isArray(fallbackRows)) {
+                    throw new Error('Fallback returned invalid data format.');
+                }
+                return fallbackRows;
+            }
+        }
+
+        async function loadAndRenderDashboard() {
+            setLoadingState(true);
+            try {
+                const rows = await fetchSheetRows();
+                const data = computeDashboardData(rows);
+
+                renderKpis(data.metrics, data.perUserStats.length);
+                renderAlerts(data.metrics, data.perUserStats);
+                renderPerformanceCards(data.perUserStats);
+                renderTaskList(data.enrichedTasks);
+                renderCharts(data.metrics, data.perUserStats);
+                setLastSyncTime(new Date());
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+                const taskList = document.querySelector('.task-list');
+                if (taskList) {
+                    taskList.innerHTML = `
+                        <div class="task-item" style="border: 1px solid var(--accent-red);">
+                            <span class="task-name">Failed to load data. ${escapeHtml(error.message)}. If running static HTML locally, deploy with Vercel API or keep sheet public for JSONP fallback.</span>
+                        </div>
+                    `;
+                }
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        // Filter Function
+        function filterTeam(team) {
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            const target = window.event && window.event.target ? window.event.target : null;
+            if (target) {
+                target.classList.add('active');
+            }
+
+            document.querySelectorAll('.person-card').forEach(card => {
+                if (team === 'all' || card.dataset.team === team) {
+                    card.style.display = 'grid';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        loadAndRenderDashboard();
+        setInterval(loadAndRenderDashboard, AUTO_REFRESH_MS);
+    </script>
+</body>
+
+</html>
