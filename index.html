@@ -422,6 +422,41 @@
             height: 120px !important;
         }
 
+        .chart-card.chart-wide canvas {
+            height: 160px !important;
+        }
+
+        .chart-card.chart-wide {
+            display: flex;
+            flex-direction: column;
+        }
+
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.2s ease;
+        }
+
+        th.sortable:hover {
+            color: var(--accent-blue);
+        }
+
+        th.sortable .sort-indicator {
+            font-size: 0.7rem;
+            margin-left: 0.3rem;
+            opacity: 0.6;
+            transition: opacity 0.2s ease, color 0.2s ease;
+        }
+
+        th.sortable.active .sort-indicator {
+            opacity: 1;
+            color: var(--accent-blue);
+        }
+
+        th.sortable.active.desc .sort-indicator {
+            color: var(--accent-yellow);
+        }
+
         .performance-section {
             margin-bottom: 0.7rem;
         }
@@ -645,6 +680,28 @@
             background: #171721;
         }
 
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.2s ease;
+        }
+
+        th.sortable:hover {
+            color: var(--accent-blue);
+        }
+
+        th.sortable .sort-indicator {
+            font-size: 0.7rem;
+            margin-left: 0.3rem;
+            opacity: 0.6;
+            transition: opacity 0.2s ease;
+        }
+
+        th.sortable.active .sort-indicator {
+            opacity: 1;
+            color: var(--accent-blue);
+        }
+
         .task-age {
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.68rem;
@@ -809,11 +866,11 @@
                 <h3>Completion Rate by Person</h3>
                 <canvas id="completionChart"></canvas>
             </div>
-            <div class="chart-card">
+            <div class="chart-card chart-wide">
                 <h3>Task Distribution</h3>
                 <canvas id="distributionChart"></canvas>
             </div>
-            <div class="chart-card">
+            <div class="chart-card chart-wide">
                 <h3>Overdue Severity Breakdown</h3>
                 <canvas id="urgencyChart"></canvas>
             </div>
@@ -837,10 +894,10 @@
                             <th>Task Title</th>
                             <th>Team</th>
                             <th>Member</th>
-                            <th>Status</th>
+                            <th class="sortable" id="statusHeader">Status <span class="sort-indicator">⬍</span></th>
                             <th>Priority</th>
                             <th>Task Age</th>
-                            <th>Due Date</th>
+                            <th class="sortable" id="dueDateHeader">Due Date <span class="sort-indicator">⬍</span></th>
                         </tr>
                     </thead>
                     <tbody id="taskTableBody"></tbody>
@@ -858,7 +915,7 @@
         Chart.defaults.borderColor = '#2a2a3a';
 
         const SHEET_ID = '1UCjOC7ChKyaWHIbp1XA_7IjeAO1cLtuUCXlVFDw0dtg';
-        const SHEET_NAME = 'all_data';
+        const SHEET_NAME = 'tracking';
         const API_ENDPOINT = '/api/sheet-data';
         const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
@@ -893,7 +950,9 @@
             selectedTeam: 'all',
             selectedMember: 'all',
             selectedStatus: 'all',
-            search: ''
+            search: '',
+            statusSortMode: 'normal',
+            dueDateSortMode: 'normal'
         };
 
         const chartInstances = {
@@ -1035,68 +1094,45 @@
         }
 
         function mapOpenSheetRow(row) {
-            // Supports both exact new headers (Task_Title, Team, Member …)
-            // and lowercase/alias variants returned by some proxy APIs
-            const taskTitle = String(
-                row.Task_Title || row.task_title || row.Task || row.task || ''
-            ).trim();
-            const member = String(
-                row.Member || row.member || row.User || row.user || ''
-            ).trim();
-            const teamRaw = String(
-                row.Team || row.team || row.category || row.Category || ''
-            ).trim();
+            const taskTitle = String(row.task || '').trim();
+            const member = String(row.user || '').trim();
+            const teamRaw = String(row.team || '').trim();
             const team = teamRaw || inferTeamFromMember(member);
 
             return {
-                task_id: String(row.Task_ID || row.task_id || row.ID || row.id || '').trim(),
+                task_id: String(row.task_id || '').trim(),
                 task: taskTitle || '(Untitled Task)',
                 team,
                 member: member || 'Unassigned',
-                status: normalizeStatus(row.Status || row.status || ''),
-                // Priority comes from Priority column; fall back to follow_up flag
-                priority: normalizePriority(
-                    row.Priority || row.priority ||
-                    row.follow_up || row.Follow_Up || ''
-                ),
-                assignedDate: parseDate(
-                    row.assigned_date || row.Assigned_Date ||
-                    row.AssignedDate || row.timestamp || ''
-                ),
-                dueDate: parseDate(
-                    row.Due_Date || row.due_date ||
-                    row.DueDate || row.Due || row.due || ''
-                ),
-                tags: String(row.Tags || row.tags || '').trim(),
-                followUp: String(row.follow_up || row.Follow_Up || '').trim()
+                status: normalizeStatus(row.status || ''),
+                priority: normalizePriority(row.category || row.follow_up || ''),
+                assignedDate: parseDate(row.assigned_date || ''),
+                dueDate: parseDate(row.due || ''),
+                tags: '',
+                followUp: String(row.follow_up || '').trim()
             };
         }
 
         function mapApiRow(row) {
             // /api/sheet-data returns rows normalised by sheet-data.js.
-            // New sheet headers: Task_ID, Task_Title, Team, Member, Status,
-            // Priority, assigned_date, Due_Date, Tags, follow_up
-            // sheet-data.js normalises keys to lowercase_underscore, so:
-            // task_id, task_title, team, member, status, priority, assigned_date, due_date, tags, follow_up
-            const taskTitle = String(row.task_title || row.Task_Title || row.task || '').trim();
-            const member = String(row.member || row.Member || row.user || '').trim();
-            const teamRaw = String(row.team || row.Team || '').trim();
+            // New sheet headers normalize to:
+            // assigned_date, user, team, task_id, task, due, category, follow_up, status
+            const taskTitle = String(row.task || '').trim();
+            const member = String(row.user || '').trim();
+            const teamRaw = String(row.team || '').trim();
             const team = teamRaw || inferTeamFromMember(member);
 
             return {
-                task_id: String(row.task_id || row.Task_ID || '').trim(),
+                task_id: String(row.task_id || '').trim(),
                 task: taskTitle || '(Untitled Task)',
                 team,
                 member: member || 'Unassigned',
-                status: normalizeStatus(row.status || row.Status || ''),
-                priority: normalizePriority(
-                    row.priority || row.Priority ||
-                    row.follow_up || row.Follow_Up || ''
-                ),
-                assignedDate: parseDate(row.assigned_date || row.Assigned_Date || ''),
-                dueDate: parseDate(row.due_date || row.Due_Date || row.due || ''),
-                tags: String(row.tags || row.Tags || '').trim(),
-                followUp: String(row.follow_up || row.Follow_Up || '').trim()
+                status: normalizeStatus(row.status || ''),
+                priority: normalizePriority(row.category || row.follow_up || ''),
+                assignedDate: parseDate(row.assigned_date || ''),
+                dueDate: parseDate(row.due || ''),
+                tags: String(row.tags || '').trim(),
+                followUp: String(row.follow_up || '').trim()
             };
         }
 
@@ -1112,23 +1148,21 @@
                 if (str.startsWith('Date(')) return str;
                 // Non-empty value
                 if (str !== 'null') return str;
-                // Fall back to formatted string (cell.f) if available
                 return cell.f ? String(cell.f) : '';
             };
-            // New sheet column order (A–J / indices 0–9):
-            // 0=Task_ID, 1=Task_Title, 2=Team, 3=Member, 4=Status,
-            // 5=Priority, 6=assigned_date, 7=Due_Date, 8=Tags, 9=follow_up
+            // New sheet column order (A–I / indices 0–8):
+            // 0=Assigned Date, 1=user, 2=Team, 3=task_id, 4=task,
+            // 5=due, 6=category, 7=follow_up, 8=status
             return {
-                Task_ID: get(0),
-                Task_Title: get(1),
-                Team: get(2),
-                Member: get(3),
-                Status: get(4),
-                Priority: get(5),
-                assigned_date: get(6),
-                Due_Date: get(7),
-                Tags: get(8),
-                follow_up: get(9)
+                assigned_date: get(0),
+                user: get(1),
+                team: get(2),
+                task_id: get(3),
+                task: get(4),
+                due: get(5),
+                category: get(6),
+                follow_up: get(7),
+                status: get(8)
             };
         }
 
@@ -1461,8 +1495,14 @@
                 },
                 options: {
                     responsive: true,
-                    plugins: { legend: { position: 'bottom', labels: { padding: 12 } } },
-                    cutout: '65%'
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: { padding: 14, boxWidth: 14, boxHeight: 14 }
+                        }
+                    },
+                    cutout: '58%'
                 }
             });
 
@@ -1476,22 +1516,36 @@
                             label: 'Urgent (>48hrs)',
                             data: perMemberStats.map(item => item.urgent),
                             backgroundColor: '#ff4757',
-                            borderRadius: 4
+                            borderRadius: 4,
+                            barThickness: 10,
+                            maxBarThickness: 10
                         },
                         {
                             label: 'Reminder (24-48hrs)',
                             data: perMemberStats.map(item => item.reminder),
                             backgroundColor: '#ffc107',
-                            borderRadius: 4
+                            borderRadius: 4,
+                            barThickness: 10,
+                            maxBarThickness: 10
                         }
                     ]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
                     plugins: { legend: { position: 'bottom' } },
                     scales: {
-                        x: { stacked: true, grid: { display: false } },
-                        y: { stacked: true, beginAtZero: true, grid: { color: '#2a2a3a' } }
+                        x: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: { precision: 0 },
+                            grid: { display: true }
+                        },
+                        y: {
+                            stacked: true,
+                            grid: { color: '#2a2a3a' }
+                        }
                     }
                 }
             });
@@ -1595,13 +1649,31 @@
             return 'pending';
         }
 
+        function sortTasks(tasks) {
+            if (state.statusSortMode === 'pending-first') {
+                const pendingTasks = tasks.filter(t => t.status === 'Pending');
+                const otherTasks = tasks.filter(t => t.status !== 'Pending');
+                return [...pendingTasks, ...otherTasks];
+            }
+            if (state.dueDateSortMode === 'due-latest-first') {
+                return [...tasks].sort((a, b) => {
+                    if (!a.dueDate && !b.dueDate) return 0;
+                    if (!a.dueDate) return 1;
+                    if (!b.dueDate) return -1;
+                    return b.dueDate.getTime() - a.dueDate.getTime();
+                });
+            }
+            return tasks;
+        }
+
         function renderTasks(tasks) {
             if (!tasks.length) {
                 el.taskTableBody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);">No tasks found for selected filters.</td></tr>';
                 return;
             }
 
-            el.taskTableBody.innerHTML = tasks.map(task => {
+            const sortedTasks = sortTasks(tasks);
+            el.taskTableBody.innerHTML = sortedTasks.map(task => {
                 const style = teamStyle(task.team);
                 const ageLabel = task.assignedDate ? (task.ageDays + 'd') : '--';
                 const ageClass = task.delayed ? 'task-age delayed' : 'task-age';
@@ -1748,6 +1820,31 @@
             }
         }
 
+        function updateSortHeaders() {
+            const statusHeader = document.getElementById('statusHeader');
+            const dueDateHeader = document.getElementById('dueDateHeader');
+
+            if (statusHeader) {
+                const statusIndicator = statusHeader.querySelector('.sort-indicator');
+                const statusActive = state.statusSortMode === 'pending-first';
+                statusHeader.classList.toggle('active', statusActive);
+                statusHeader.classList.remove('desc');
+                if (statusIndicator) {
+                    statusIndicator.textContent = statusActive ? '⬇' : '⬍';
+                }
+            }
+
+            if (dueDateHeader) {
+                const dueIndicator = dueDateHeader.querySelector('.sort-indicator');
+                const dueActive = state.dueDateSortMode === 'due-latest-first';
+                dueDateHeader.classList.toggle('active', dueActive);
+                dueDateHeader.classList.toggle('desc', dueActive);
+                if (dueIndicator) {
+                    dueIndicator.textContent = dueActive ? '⬇' : '⬍';
+                }
+            }
+        }
+
         function bindEvents() {
             el.memberFilter.addEventListener('change', event => {
                 state.selectedMember = event.target.value;
@@ -1767,10 +1864,31 @@
             el.refreshBtn.addEventListener('click', async () => {
                 await loadDashboard(true);
             });
+
+            const statusHeader = document.getElementById('statusHeader');
+            if (statusHeader) {
+                statusHeader.addEventListener('click', () => {
+                    state.statusSortMode = state.statusSortMode === 'pending-first' ? 'normal' : 'pending-first';
+                    state.dueDateSortMode = 'normal';
+                    updateSortHeaders();
+                    renderTasks(state.filtered);
+                });
+            }
+
+            const dueDateHeader = document.getElementById('dueDateHeader');
+            if (dueDateHeader) {
+                dueDateHeader.addEventListener('click', () => {
+                    state.dueDateSortMode = state.dueDateSortMode === 'due-latest-first' ? 'normal' : 'due-latest-first';
+                    state.statusSortMode = 'normal';
+                    updateSortHeaders();
+                    renderTasks(state.filtered);
+                });
+            }
         }
 
         function init() {
             bindEvents();
+            updateSortHeaders();
             loadDashboard(false);
             setInterval(() => {
                 loadDashboard(true);
